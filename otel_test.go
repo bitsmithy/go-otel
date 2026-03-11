@@ -2,6 +2,9 @@ package otel_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	otel "github.com/bitsmithy/go-otel"
@@ -80,6 +83,41 @@ func TestSetup_EndpointOverride(t *testing.T) {
 		t.Fatalf("Setup with Endpoint override returned error: %v", err)
 	}
 	_ = shutdown(cancelledCtx())
+}
+
+func TestSetup_EnvHeadersSentToCollector(t *testing.T) {
+	var receivedAuth atomic.Value
+
+	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			receivedAuth.Store(auth)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer collector.Close()
+
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer test-token")
+
+	ctx := context.Background()
+	shutdown, _, tracer, _, err := otel.Setup(ctx, otel.Config{
+		ServiceName: "test-svc",
+		Endpoint:    collector.URL,
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	_, span := tracer.Start(ctx, "test-op")
+	span.End()
+
+	if err := shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+
+	got, _ := receivedAuth.Load().(string)
+	if got != "Bearer test-token" {
+		t.Errorf("Authorization header = %q, want %q", got, "Bearer test-token")
+	}
 }
 
 func TestDetachedContext_NotCancelledWhenParentIs(t *testing.T) {

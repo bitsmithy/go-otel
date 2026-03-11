@@ -89,6 +89,32 @@ telemetry.Config{
 
 Per-signal env vars (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`) still work when `Config.Endpoint` is empty, so you can route signals to different collectors via the environment without changing code.
 
+### Authentication
+
+If your collector requires authentication, set the standard `OTEL_EXPORTER_OTLP_HEADERS` environment variable. The OTel SDK reads it automatically and attaches the headers to every export request (traces, metrics, and logs):
+
+```sh
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.example.com:4318"
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
+```
+
+The header format is `key=value` pairs separated by commas:
+
+```sh
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>,X-Org-Id=my-org"
+```
+
+Per-signal header vars are also supported and take precedence over the generic one:
+
+| Variable | Applies to |
+|---|---|
+| `OTEL_EXPORTER_OTLP_HEADERS` | All signals (fallback) |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | Traces only |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | Metrics only |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | Logs only |
+
+No code changes are needed — `Config.Endpoint` and auth headers are fully orthogonal.
+
 ## What Setup returns
 
 ```go
