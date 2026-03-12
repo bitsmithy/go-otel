@@ -2,9 +2,16 @@
 
 A thin, opinionated OpenTelemetry setup library for Go services. One call wires up traces, metrics, and logs over OTLP/HTTP, returns a pre-configured `*slog.Logger`, and exposes HTTP middleware for `http.ServeMux`.
 
+- **Single-call setup** — `telemetry.Setup(ctx, config)`, no builder pattern
+- **All config optional** — sensible defaults derived from build info and environment
+- **OTLP/HTTP only** — opinionated; no stdout/Zipkin/Jaeger in the setup path
+- **Env var fallback** — standard `OTEL_*` env vars apply when `Config.Endpoint` is empty
+- **Ergonomic wrappers** — `Trace()` for spans, `Counter`/`Histogram`/`Gauge`/`UpDownCounter` for metrics
+- **Test harness** — `oteltest.Setup(t)` gives you in-memory providers with zero boilerplate
+
 ## Requirements
 
-- Go 1.22 or later
+- Go 1.24 or later
 - An OTLP-compatible collector (e.g. [Grafana Alloy](https://grafana.com/docs/alloy/), [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/))
 
 ## Installation
@@ -165,6 +172,123 @@ server := &http.Server{
 
 Incoming W3C `traceparent` / `tracestate` headers are automatically extracted, so distributed traces propagate through the service boundary without any extra code.
 
+## Tracing
+
+### Trace convenience
+
+`Trace` wraps the create-span / defer-end / record-error boilerplate into a single call:
+
+```go
+err := telemetry.Trace(ctx, tracer, "process-order", func(ctx context.Context, span trace.Span) error {
+    span.SetAttributes(attribute.Int("order.id", orderID))
+
+    // Nested call — automatically becomes a child span.
+    return telemetry.Trace(ctx, tracer, "validate-order", func(ctx context.Context, span trace.Span) error {
+        return validateOrder(ctx, orderID)
+    })
+})
+```
+
+If `fn` returns an error, the span automatically records the error and sets its status to `Error`. The span is always ended when `fn` returns.
+
+### Raw tracer
+
+For full control, use the tracer directly:
+
+```go
+ctx, span := tracer.Start(ctx, "process-order",
+    trace.WithAttributes(attribute.Int("order.id", orderID)),
+)
+defer span.End()
+
+if err := validateOrder(ctx, orderID); err != nil {
+    span.RecordError(err)
+    span.SetStatus(codes.Error, "order validation failed")
+    return err
+}
+```
+
+### Span attributes and events
+
+```go
+ctx, span := tracer.Start(ctx, "upload-file")
+defer span.End()
+
+span.SetAttributes(
+    attribute.String("file.name", filename),
+    attribute.Int64("file.size_bytes", size),
+)
+
+span.AddEvent("virus-scan-passed")
+
+if err != nil {
+    span.RecordError(err)
+    span.SetStatus(codes.Error, "upload failed")
+}
+```
+
+## Metrics
+
+### Metric wrappers
+
+The library provides thin wrapper types with a simplified attribute API — pass `attribute.KeyValue` values directly instead of wrapping them in `metric.WithAttributes()`:
+
+#### Counter — count occurrences
+
+```go
+counter, err := telemetry.NewCounter(meter, "orders.placed", metric.WithUnit("{order}"))
+counter.Add(ctx, 1, attribute.String("method", "card"))
+```
+
+#### Histogram — measure distributions
+
+```go
+hist, err := telemetry.NewHistogram(meter, "op.duration", metric.WithUnit("ms"))
+hist.Record(ctx, 42.0)
+```
+
+`Histogram.Time` measures a function's wall-clock duration and records it in the histogram's unit:
+
+```go
+hist, _ := telemetry.NewHistogram(meter, "db.query.duration", metric.WithUnit("ms"))
+
+err := hist.Time(ctx, func(ctx context.Context) error {
+    return db.QueryRowContext(ctx, "SELECT ...").Scan(&result)
+})
+```
+
+If the function returns an error and the context carries an active span, the span's status is set to `Error` and the error is recorded. Supported time units: `"s"`, `"ms"`, `"us"`, `"ns"`, `"min"`, `"h"`. Defaults to seconds if the unit is empty or unrecognised.
+
+#### Gauge — track a current value
+
+```go
+gauge, err := telemetry.NewGauge(meter, "cpu.temperature", metric.WithUnit("Cel"))
+gauge.Record(ctx, 17.5)
+```
+
+#### UpDownCounter — values that go up and down
+
+```go
+udc, err := telemetry.NewUpDownCounter(meter, "db.connections")
+udc.Increment(ctx)
+udc.Decrement(ctx)
+udc.Add(ctx, 5, attribute.String("pool", "primary"))
+```
+
+### Raw meter
+
+For instrument types or options not covered by the wrappers, use the meter directly:
+
+```go
+orderCount, err := meter.Int64Counter("orders.processed",
+    metric.WithDescription("Total number of orders processed"),
+    metric.WithUnit("{order}"),
+)
+orderCount.Add(ctx, 1, metric.WithAttributes(
+    attribute.String("order.status", status),
+))
+```
+
 ## Logging
 
 `Setup` returns a `*slog.Logger` that fans out to two sinks:
@@ -182,6 +306,16 @@ log.InfoContext(ctx, "order received", "order_id", 42)
 // stderr output includes: {"msg":"order received","order_id":42,"trace_id":"...","span_id":"..."}
 ```
 
+### Child loggers
+
+Use `With` to create a sub-logger that carries shared fields across all calls:
+
+```go
+reqLog := log.With("request_id", requestID, "user_id", userID)
+reqLog.InfoContext(ctx, "handler started")
+reqLog.InfoContext(ctx, "handler complete", "status", 200)
+```
+
 ### Additional logger instances
 
 If you need a second logger (e.g. for a background worker), call `NewLogger` after `Setup`:
@@ -190,170 +324,62 @@ If you need a second logger (e.g. for a background worker), call `NewLogger` aft
 workerLog := telemetry.NewLogger("worker", slog.LevelWarn)
 ```
 
-## Using the tracer
+## Testing
 
-Use the tracer to record units of work as spans. Child spans are created by passing the context returned by the parent `Start` call.
-
-```go
-func processOrder(ctx context.Context, tracer trace.Tracer, orderID int) error {
-    ctx, span := tracer.Start(ctx, "process-order",
-        trace.WithAttributes(attribute.Int("order.id", orderID)),
-    )
-    defer span.End()
-
-    if err := validateOrder(ctx, tracer, orderID); err != nil {
-        span.RecordError(err)
-        span.SetStatus(codes.Error, "order validation failed")
-        return err
-    }
-
-    span.SetStatus(codes.Ok, "")
-    return nil
-}
-
-func validateOrder(ctx context.Context, tracer trace.Tracer, orderID int) error {
-    _, span := tracer.Start(ctx, "validate-order")
-    defer span.End()
-
-    // ... validation logic ...
-    return nil
-}
-```
-
-Spans are automatically linked — `validate-order` will appear as a child of `process-order` in your tracing backend.
-
-### Span attributes and events
-
-```go
-ctx, span := tracer.Start(ctx, "upload-file")
-defer span.End()
-
-// Attach structured data to the span.
-span.SetAttributes(
-    attribute.String("file.name", filename),
-    attribute.Int64("file.size_bytes", size),
-)
-
-// Record a point-in-time event within the span.
-span.AddEvent("virus-scan-passed")
-
-// Mark the span as failed.
-if err != nil {
-    span.RecordError(err)
-    span.SetStatus(codes.Error, "upload failed")
-}
-```
-
-Required imports:
+The `oteltest` sub-package provides in-memory trace and metric providers for testing. No collector needed — all telemetry is captured in memory and cleaned up automatically via `t.Cleanup`.
 
 ```go
 import (
-    "go.opentelemetry.io/otel/attribute"
+    "context"
+    "testing"
+
+    telemetry "github.com/bitsmithy/go-otel"
+    "github.com/bitsmithy/go-otel/oteltest"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
-```
 
-## Using the meter
+func TestProcessOrder(t *testing.T) {
+    h := oteltest.Setup(t)
+    ctx := context.Background()
 
-Use the meter to create and record metric instruments. Create instruments once (e.g. in a constructor) and reuse them across calls.
+    err := telemetry.Trace(ctx, h.Tracer, "process-order", func(ctx context.Context, span trace.Span) error {
+        return processOrder(ctx, orderID)
+    })
 
-### Counter — count occurrences
-
-```go
-type OrderProcessor struct {
-    orderCount metric.Int64Counter
-}
-
-func NewOrderProcessor(meter metric.Meter) (*OrderProcessor, error) {
-    orderCount, err := meter.Int64Counter("orders.processed",
-        metric.WithDescription("Total number of orders processed"),
-        metric.WithUnit("{order}"),
-    )
-    if err != nil {
-        return nil, err
+    // Assert spans
+    spans := h.Spans()
+    if len(spans) != 1 {
+        t.Fatalf("expected 1 span, got %d", len(spans))
     }
-    return &OrderProcessor{orderCount: orderCount}, nil
-}
+    if spans[0].Status.Code != codes.Ok {
+        t.Errorf("span status = %v, want Ok", spans[0].Status.Code)
+    }
 
-func (p *OrderProcessor) Process(ctx context.Context, status string) {
-    p.orderCount.Add(ctx, 1, metric.WithAttributes(
-        attribute.String("order.status", status),
-    ))
-}
-```
-
-### Histogram — measure distributions
-
-```go
-duration, err := meter.Float64Histogram("order.processing.duration",
-    metric.WithDescription("Time taken to process an order"),
-    metric.WithUnit("s"),
-)
-
-start := time.Now()
-err = processOrder(ctx, orderID)
-duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-    attribute.Bool("order.success", err == nil),
-))
-```
-
-### Gauge — track a current value
-
-```go
-queueDepth, err := meter.Int64UpDownCounter("orders.queue.depth",
-    metric.WithDescription("Number of orders waiting to be processed"),
-    metric.WithUnit("{order}"),
-)
-
-queueDepth.Add(ctx, 1)  // order enqueued
-queueDepth.Add(ctx, -1) // order dequeued
-```
-
-Required imports:
-
-```go
-import (
-    "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/metric"
-)
-```
-
-## Using the logger
-
-Always use the `Context` variants (`InfoContext`, `ErrorContext`, etc.) so that `trace_id` and `span_id` are automatically injected when a span is active.
-
-```go
-// Structured key-value pairs.
-log.InfoContext(ctx, "order received", "order_id", orderID, "customer", email)
-
-// Warn with context.
-log.WarnContext(ctx, "payment retry", "attempt", 2, "order_id", orderID)
-
-// Error — include the error value as "error".
-if err != nil {
-    log.ErrorContext(ctx, "order failed", "order_id", orderID, "error", err)
-    return err
+    // Assert metrics
+    rm := h.Metrics(t)
+    m := oteltest.FindMetric(rm, "orders.placed")
+    if m == nil {
+        t.Fatal("metric not found")
+    }
 }
 ```
 
-Example stderr output when a span is active:
+### Harness API
 
-```json
-{"time":"2026-03-06T14:00:00Z","level":"INFO","msg":"order received","order_id":99,"customer":"alice@example.com","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}
-```
+| Method | Returns | Description |
+|---|---|---|
+| `oteltest.Setup(t)` | `*Harness` | In-memory tracer + meter, auto-cleaned up |
+| `h.Tracer` | `trace.Tracer` | In-memory tracer for creating spans |
+| `h.Meter` | `metric.Meter` | In-memory meter for creating instruments |
+| `h.Spans()` | `[]tracetest.SpanStub` | All completed spans |
+| `h.Metrics(t)` | `metricdata.ResourceMetrics` | All recorded metrics |
+| `oteltest.FindMetric(rm, name)` | `*metricdata.Metrics` | Find a metric by name |
+| `oteltest.MetricAttrs(attrs)` | `map[string]string` | Extract attributes as a map |
 
-### Child loggers
+## Advanced
 
-Use `With` to create a sub-logger that carries shared fields across all calls — useful for request-scoped or component-scoped logging:
-
-```go
-reqLog := log.With("request_id", requestID, "user_id", userID)
-reqLog.InfoContext(ctx, "handler started")
-reqLog.InfoContext(ctx, "handler complete", "status", 200)
-```
-
-## Telemetry after context cancellation
+### Telemetry after context cancellation
 
 When a request context is cancelled (e.g. a timeout fires), the OTel SDK silently drops any telemetry emitted on that context. Use `DetachedContext` to emit final logs and metrics after a potentially-cancelled operation:
 
@@ -373,22 +399,18 @@ log.InfoContext(tctx, "work done", "duration_s", dur)
 
 `DetachedContext` returns a fresh, never-cancelled context that still carries the active span, so trace correlation is preserved.
 
-## slog handlers
+### slog handlers
 
 Both handlers are exported for use in custom logging setups.
 
-### TraceHandler
-
-Wraps any `slog.Handler` and injects `trace_id` and `span_id` into records when an active span is present:
+**TraceHandler** wraps any `slog.Handler` and injects `trace_id` and `span_id` into records when an active span is present:
 
 ```go
 base := slog.NewJSONHandler(os.Stderr, nil)
 log := slog.New(&telemetry.TraceHandler{Handler: base})
 ```
 
-### FanoutHandler
-
-Sends each record to multiple handlers. Useful for routing logs to more than one sink:
+**FanoutHandler** sends each record to multiple handlers:
 
 ```go
 log := slog.New(telemetry.FanoutHandler{
@@ -396,6 +418,42 @@ log := slog.New(telemetry.FanoutHandler{
     slog.NewTextHandler(logFile, nil),
 })
 ```
+
+## Development
+
+### Prerequisites
+
+- [Go 1.24+](https://go.dev/dl/)
+- [lefthook](https://github.com/evilmartians/lefthook) — git hooks manager
+- [gofumpt](https://github.com/mvdan/gofumpt), [goimports](https://pkg.go.dev/golang.org/x/tools/cmd/goimports), [gci](https://github.com/daixiang0/gci) — formatting
+- [golangci-lint](https://golangci-lint.run/) — linting
+- [gotestsum](https://github.com/gotestyourself/gotestsum) — test runner
+
+### Setup
+
+```sh
+git clone https://github.com/bitsmithy/go-otel.git
+cd go-otel
+lefthook install
+```
+
+### Pre-commit hooks
+
+Lefthook runs a two-stage pipeline on every commit:
+
+1. **Fixers** (sequential): gofumpt → goimports → gci → golangci-lint --fix
+2. **Checks** (parallel): go vet, gotestsum
+
+Fixers auto-format staged Go files and re-stage them. If a fixer fails, checks are skipped.
+
+### CI
+
+Pull requests run two GitHub Actions workflows:
+
+| Workflow | Jobs |
+|---|---|
+| **Check** | gofumpt diff, go vet, golangci-lint, govulncheck |
+| **Test** | gotestsum |
 
 ## License
 
