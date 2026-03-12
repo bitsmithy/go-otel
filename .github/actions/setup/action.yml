@@ -1,0 +1,17 @@
+---
+name: "Setup"
+description: "Sets up the Go environment, fetching deps, initial build"
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.24"
+    - name: Install dependencies
+      shell: bash
+      run: go get .
+    - name: Build
+      shell: bash
+      run: go build -v ./...

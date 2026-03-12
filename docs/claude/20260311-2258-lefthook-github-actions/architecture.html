@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CI Pipeline Architecture — go-otel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8edf2;
+    --surface-elevated: #ffffff;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-bright: rgba(0, 0, 0, 0.16);
+    --text: #1a2332;
+    --text-dim: #6b7a8d;
+    --accent: #0369a1;
+    --accent-dim: rgba(3, 105, 161, 0.08);
+    --teal: #0891b2;
+    --teal-dim: rgba(8, 145, 178, 0.08);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.08);
+    --emerald: #047857;
+    --emerald-dim: rgba(4, 120, 87, 0.08);
+    --rose: #be123c;
+    --rose-dim: rgba(190, 18, 60, 0.08);
+    --slate: #475569;
+    --slate-dim: rgba(71, 85, 105, 0.06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1720;
+      --surface: #182030;
+      --surface2: #1e2a3a;
+      --surface-elevated: #223040;
+      --border: rgba(255, 255, 255, 0.06);
+      --border-bright: rgba(255, 255, 255, 0.12);
+      --text: #e2e8f0;
+      --text-dim: #8899aa;
+      --accent: #38bdf8;
+      --accent-dim: rgba(56, 189, 248, 0.1);
+      --teal: #22d3ee;
+      --teal-dim: rgba(34, 211, 238, 0.1);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.1);
+      --emerald: #34d399;
+      --emerald-dim: rgba(52, 211, 153, 0.1);
+      --rose: #fb7185;
+      --rose-dim: rgba(251, 113, 133, 0.1);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148, 163, 184, 0.08);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle, var(--border) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+    overflow-wrap: break-word;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .anim {
+    animation: fadeUp 0.35s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.05s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  .diagram {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .header-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  h1 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 14px;
+    font-family: var(--font-mono);
+    margin-bottom: 36px;
+  }
+
+  /* Section cards */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+  }
+
+  .section--hero {
+    background: var(--surface-elevated);
+    border-color: color-mix(in srgb, var(--border) 40%, var(--accent) 60%);
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+    padding: 24px 28px;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-label .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .section--accent .section-label { color: var(--accent); }
+  .section--accent .section-label .dot { background: var(--accent); }
+  .section--teal .section-label { color: var(--teal); }
+  .section--teal .section-label .dot { background: var(--teal); }
+  .section--amber .section-label { color: var(--amber); }
+  .section--amber .section-label .dot { background: var(--amber); }
+  .section--emerald .section-label { color: var(--emerald); }
+  .section--emerald .section-label .dot { background: var(--emerald); }
+  .section--rose .section-label { color: var(--rose); }
+  .section--rose .section-label .dot { background: var(--rose); }
+
+  /* Flow arrows */
+  .flow-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 0;
+  }
+
+  .flow-arrow svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: var(--border-bright);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Pipeline (horizontal steps) */
+  .pipeline {
+    display: flex;
+    gap: 0;
+    align-items: center;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .pipeline-step {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 14px;
+    min-width: 100px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+
+  .pipeline-step .step-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+  }
+
+  .pipeline-step .step-name {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .pipeline-step .step-cmd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  .pipeline-step--teal { border-color: var(--teal-dim); }
+  .pipeline-step--teal .step-label { color: var(--teal); }
+  .pipeline-step--amber { border-color: var(--amber-dim); }
+  .pipeline-step--amber .step-label { color: var(--amber); }
+  .pipeline-step--emerald { border-color: var(--emerald-dim); }
+  .pipeline-step--emerald .step-label { color: var(--emerald); }
+  .pipeline-step--accent { border-color: var(--accent-dim); }
+  .pipeline-step--accent .step-label { color: var(--accent); }
+  .pipeline-step--rose { border-color: var(--rose-dim); }
+  .pipeline-step--rose .step-label { color: var(--rose); }
+
+  .pipeline-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 3px;
+    color: var(--border-bright);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  /* Parallel group */
+  .parallel-group {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .parallel-group .pipeline-step {
+    min-width: 110px;
+  }
+
+  .parallel-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Two column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .two-col > * { min-width: 0; }
+
+  /* Comparison table */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .compare-table th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border-bright);
+    color: var(--text-dim);
+  }
+
+  .compare-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .compare-table tr:last-child td { border-bottom: none; }
+
+  .compare-table code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .tag--seq { background: var(--teal-dim); color: var(--teal); }
+  .tag--par { background: var(--amber-dim); color: var(--amber); }
+  .tag--fix { background: var(--emerald-dim); color: var(--emerald); }
+  .tag--check { background: var(--accent-dim); color: var(--accent); }
+
+  /* File reference */
+  .file-ref {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 6px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: inline-block;
+    margin: 3px 2px;
+  }
+
+  .callout {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  .callout strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    body { padding: 16px; }
+    .two-col { grid-template-columns: 1fr; }
+    .pipeline { flex-wrap: wrap; gap: 6px; }
+    .pipeline-arrow { display: none; }
+    .parallel-group { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header-label anim" style="--i:0">CI Pipeline</div>
+<h1 class="anim" style="--i:1">Lefthook + GitHub Actions</h1>
+<p class="subtitle anim" style="--i:2">go-otel &mdash; local hooks &amp; CI quality gates</p>
+
+<div class="diagram">
+
+  <!-- LEFTHOOK SECTION -->
+  <div class="section section--hero section--teal anim" style="--i:3">
+    <div class="section-label"><span class="dot"></span> Lefthook &mdash; pre-commit hook</div>
+
+    <div style="margin-bottom:8px">
+      <span class="tag tag--seq">sequential</span>
+      <span style="font-size:12px;color:var(--text-dim);margin-left:4px">Stage 1: Fixers</span>
+    </div>
+    <div class="pipeline" style="margin-bottom:18px">
+      <div class="pipeline-step pipeline-step--teal">
+        <div class="step-label">Step 1</div>
+        <div class="step-name">gofumpt</div>
+        <div class="step-cmd">gofumpt -w .</div>
+      </div>
+      <div class="pipeline-arrow">&#8594;</div>
+      <div class="pipeline-step pipeline-step--teal">
+        <div class="step-label">Step 2</div>
+        <div class="step-name">goimports</div>
+        <div class="step-cmd">goimports -w .</div>
+      </div>
+      <div class="pipeline-arrow">&#8594;</div>
+      <div class="pipeline-step pipeline-step--teal">
+        <div class="step-label">Step 3</div>
+        <div class="step-name">gci</div>
+        <div class="step-cmd">gci write .</div>
+      </div>
+      <div class="pipeline-arrow">&#8594;</div>
+      <div class="pipeline-step pipeline-step--emerald">
+        <div class="step-label">Step 4</div>
+        <div class="step-name">lint --fix</div>
+        <div class="step-cmd">golangci-lint run --fix</div>
+      </div>
+    </div>
+
+    <div class="flow-arrow" style="padding:0 0 8px 0">
+      <svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12"/></svg>
+      then
+    </div>
+
+    <div style="margin-bottom:8px">
+      <span class="tag tag--par">parallel</span>
+      <span style="font-size:12px;color:var(--text-dim);margin-left:4px">Stage 2: Checks</span>
+    </div>
+    <div class="parallel-group">
+      <div class="pipeline-step pipeline-step--accent">
+        <div class="step-label">Check</div>
+        <div class="step-name">gotestsum</div>
+        <div class="step-cmd">gotestsum ./...</div>
+      </div>
+      <div class="pipeline-step pipeline-step--accent">
+        <div class="step-label">Check</div>
+        <div class="step-name">go vet</div>
+        <div class="step-cmd">go vet ./...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow anim" style="--i:4">
+    <svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12"/></svg>
+    push to GitHub
+  </div>
+
+  <!-- GITHUB ACTIONS SECTION -->
+  <div class="two-col anim" style="--i:5">
+    <div class="section section--amber">
+      <div class="section-label"><span class="dot"></span> check.yml</div>
+      <div class="parallel-label">all jobs run in parallel</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="pipeline-step pipeline-step--amber">
+          <div class="step-name">gofumpt</div>
+          <div class="step-cmd">gofumpt -d . | diff</div>
+        </div>
+        <div class="pipeline-step pipeline-step--amber">
+          <div class="step-name">go vet</div>
+          <div class="step-cmd">go vet ./...</div>
+        </div>
+        <div class="pipeline-step pipeline-step--amber">
+          <div class="step-name">golangci-lint</div>
+          <div class="step-cmd">golangci-lint run</div>
+        </div>
+        <div class="pipeline-step pipeline-step--rose">
+          <div class="step-name">govulncheck</div>
+          <div class="step-cmd">govulncheck ./...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section--emerald">
+      <div class="section-label"><span class="dot"></span> test.yml</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="pipeline-step pipeline-step--emerald">
+          <div class="step-name">gotestsum</div>
+          <div class="step-cmd">gotestsum ./...</div>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="callout" style="border-left-color:var(--emerald)">
+          <strong>Shared setup:</strong> Both workflows use<br>
+          <span class="file-ref">.github/actions/setup/action.yml</span><br>
+          <span style="font-size:12px">actions/setup-go@v5 &rarr; go get &rarr; go build</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARISON TABLE -->
+  <div class="section anim" style="--i:6">
+    <div class="section-label" style="color:var(--slate)"><span class="dot" style="background:var(--slate)"></span> Local vs CI</div>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Lefthook (local)</th>
+          <th>GitHub Actions (CI)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>gofumpt</code></td>
+          <td><span class="tag tag--fix">fix</span> writes files</td>
+          <td><span class="tag tag--check">check</span> diff only</td>
+        </tr>
+        <tr>
+          <td><code>goimports</code></td>
+          <td><span class="tag tag--fix">fix</span> writes files</td>
+          <td>&mdash;</td>
+        </tr>
+        <tr>
+          <td><code>gci</code></td>
+          <td><span class="tag tag--fix">fix</span> writes files</td>
+          <td>&mdash;</td>
+        </tr>
+        <tr>
+          <td><code>golangci-lint</code></td>
+          <td><span class="tag tag--fix">fix</span> --fix flag</td>
+          <td><span class="tag tag--check">check</span> report only</td>
+        </tr>
+        <tr>
+          <td><code>gotestsum</code></td>
+          <td><span class="tag tag--check">check</span></td>
+          <td><span class="tag tag--check">check</span></td>
+        </tr>
+        <tr>
+          <td><code>go vet</code></td>
+          <td><span class="tag tag--check">check</span></td>
+          <td><span class="tag tag--check">check</span></td>
+        </tr>
+        <tr>
+          <td><code>govulncheck</code></td>
+          <td>&mdash;</td>
+          <td><span class="tag tag--check">check</span> CI only</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FILE REFERENCES -->
+  <div class="section anim" style="--i:7;background:var(--surface2)">
+    <div class="section-label" style="color:var(--text-dim)"><span class="dot" style="background:var(--text-dim)"></span> Files to create</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px">
+      <span class="file-ref">lefthook.yml</span>
+      <span class="file-ref">.github/workflows/check.yml</span>
+      <span class="file-ref">.github/workflows/test.yml</span>
+      <span class="file-ref">.github/actions/setup/action.yml</span>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,28 @@
+pre-commit:
+  jobs:
+    - group:
+        piped: true
+        jobs:
+          - name: gofumpt
+            glob: "*.go"
+            run: gofumpt -w {staged_files}
+            stage_fixed: true
+          - name: goimports
+            glob: "*.go"
+            run: goimports -w {staged_files}
+            stage_fixed: true
+          - name: gci
+            glob: "*.go"
+            run: gci write --section Standard --section Default --section "Prefix(github.com/bitsmithy)" {staged_files}
+            stage_fixed: true
+          - name: lint-fix
+            glob: "*.go"
+            run: golangci-lint run --fix ./...
+            stage_fixed: true
+    - group:
+        parallel: true
+        jobs:
+          - name: vet
+            run: go vet ./...
+          - name: test
+            run: gotestsum ./...
