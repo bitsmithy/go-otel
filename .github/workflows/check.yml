@@ -8,7 +8,7 @@ jobs:
   format:
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Install gofumpt
         shell: bash
@@ -19,14 +19,14 @@ jobs:
   vet:
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Vet
         run: go vet ./...
   lint:
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Install linter
         uses: golangci/golangci-lint-action@v8
@@ -35,7 +35,7 @@ jobs:
   vulncheck:
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Install govulncheck
         shell: bash
