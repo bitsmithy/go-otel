@@ -1,0 +1,45 @@
+---
+name: Check
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  format:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install gofumpt
+        shell: bash
+        run: go install mvdan.cc/gofumpt@latest
+      - name: Check formatting
+        shell: bash
+        run: gofumpt -d .
+  vet:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Vet
+        run: go vet ./...
+  lint:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install linter
+        uses: golangci/golangci-lint-action@v8
+      - name: Lint
+        run: golangci-lint run ./...
+  vulncheck:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install govulncheck
+        shell: bash
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Vulnerability check
+        shell: bash
+        run: govulncheck ./...

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	otel "github.com/bitsmithy/go-otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -14,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	otel "github.com/bitsmithy/go-otel"
 )
 
 func newTestMeter(t *testing.T) (metric.Meter, *sdkmetric.ManualReader) {
@@ -375,4 +376,3 @@ func TestUpDownCounter_Increment_WithAttributes(t *testing.T) {
 		t.Errorf("attribute pool = %q, want %q", attrs["pool"], "primary")
 	}
 }
-
