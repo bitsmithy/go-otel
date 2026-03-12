@@ -1,6 +1,6 @@
 module github.com/bitsmithy/go-otel
 
-go 1.24.6
+go 1.26.1
 
 require (
 	go.opentelemetry.io/contrib/bridges/otelslog v0.15.0
