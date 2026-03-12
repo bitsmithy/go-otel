@@ -11,7 +11,7 @@ A thin, opinionated OpenTelemetry setup library for Go services. One call wires 
 
 ## Requirements
 
-- Go 1.24 or later
+- Go 1.26 or later
 - An OTLP-compatible collector (e.g. [Grafana Alloy](https://grafana.com/docs/alloy/), [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/))
 
 ## Installation
@@ -423,7 +423,7 @@ log := slog.New(telemetry.FanoutHandler{
 
 ### Prerequisites
 
-- [Go 1.24+](https://go.dev/dl/)
+- [Go 1.26+](https://go.dev/dl/)
 - [lefthook](https://github.com/evilmartians/lefthook) — git hooks manager
 - [gofumpt](https://github.com/mvdan/gofumpt), [goimports](https://pkg.go.dev/golang.org/x/tools/cmd/goimports), [gci](https://github.com/daixiang0/gci) — formatting
 - [golangci-lint](https://golangci-lint.run/) — linting
