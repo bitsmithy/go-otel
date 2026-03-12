@@ -374,8 +374,15 @@ func TestProcessOrder(t *testing.T) {
 | `h.Meter` | `metric.Meter` | In-memory meter for creating instruments |
 | `h.Spans()` | `[]tracetest.SpanStub` | All completed spans |
 | `h.Metrics(t)` | `metricdata.ResourceMetrics` | All recorded metrics |
-| `oteltest.FindMetric(rm, name)` | `*metricdata.Metrics` | Find a metric by name |
-| `oteltest.MetricAttrs(attrs)` | `map[string]string` | Extract attributes as a map |
+
+### Assertion helpers
+
+Utilities for navigating OTel's nested metric data structures in test assertions:
+
+| Method | Returns | Description |
+|---|---|---|
+| `oteltest.FindMetric(rm, name)` | `*metricdata.Metrics` | Find a metric by name in `ResourceMetrics` |
+| `oteltest.MetricAttrs(attrs)` | `map[string]string` | Extract attribute set as a map for easy comparison |
 
 ## Advanced
 
