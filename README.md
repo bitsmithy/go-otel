@@ -275,6 +275,30 @@ udc.Decrement(ctx)
 udc.Add(ctx, 5, attribute.String("pool", "primary"))
 ```
 
+### Product Actions
+
+A Product Action is one deliberate user intent with a stable application name.
+Create one recorder per meter and reuse it:
+
+```go
+recorder, err := telemetry.NewProductActionRecorder(meter)
+if err != nil {
+    return err
+}
+changed := true
+err = recorder.Record(ctx, telemetry.ProductAction{
+    Name:    "recipe.import.request",
+    Actor:   telemetry.ActorCook,
+    Outcome: telemetry.OutcomeSuccess,
+    Changed: &changed,
+})
+```
+
+The recorder emits `app.user.action.count` and an `app.user.action` event on the active span.
+Set `AffectedItems` for a bulk gesture; the action counter still increments once while `app.user.action.affected_items` records its size.
+Actors are limited to `anonymous`, `cook`, and `guest`.
+Outcomes are limited to `success`, `rejected`, and `error`.
+
 ### Raw meter
 
 For instrument types or options not covered by the wrappers, use the meter directly:
@@ -425,6 +449,12 @@ log := slog.New(telemetry.FanoutHandler{
     slog.NewTextHandler(logFile, nil),
 })
 ```
+
+## Shared conventions
+
+This library implements version `1.0.0` of the public [Bitsmithy Telemetry Conventions](https://github.com/bitsmithy/telemetry-conventions).
+Stable OpenTelemetry semantic conventions take precedence, and the vendored contract checksum makes convention upgrades explicit in tests.
+HTTP request durations use seconds, and shared metric attributes use route patterns and bounded values.
 
 ## Development
 

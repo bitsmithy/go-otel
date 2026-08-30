@@ -1,0 +1,112 @@
+{
+  "contract_version": "1.0.0",
+  "semantic_conventions": {
+    "authority": "OpenTelemetry",
+    "policy": "Stable OpenTelemetry semantic conventions take precedence over this contract."
+  },
+  "resource_attributes": {
+    "service.namespace": { "type": "string", "cardinality": "low" },
+    "service.name": { "type": "string", "cardinality": "low" },
+    "service.version": { "type": "string", "cardinality": "low" },
+    "deployment.environment.name": { "type": "string", "cardinality": "low" }
+  },
+  "attributes": {
+    "http.request.method": { "type": "string", "cardinality": "low" },
+    "http.route": { "type": "string", "cardinality": "application_bounded" },
+    "http.response.status_code": { "type": "integer", "cardinality": "low" },
+    "db.system.name": { "type": "string", "cardinality": "low" },
+    "db.operation.name": { "type": "string", "cardinality": "low" },
+    "error.type": { "type": "string", "cardinality": "application_bounded" },
+    "app.user.action.name": { "type": "string", "cardinality": "application_bounded" },
+    "app.user.type": {
+      "type": "string",
+      "cardinality": "bounded",
+      "allowed_values": ["cook", "guest", "anonymous"]
+    },
+    "app.user.action.outcome": {
+      "type": "string",
+      "cardinality": "bounded",
+      "allowed_values": ["success", "rejected", "error"]
+    },
+    "app.user.action.changed": { "type": "boolean", "cardinality": "bounded" }
+  },
+  "instruments": [
+    {
+      "name": "http.server.request.duration",
+      "kind": "histogram",
+      "unit": "s",
+      "stability": "opentelemetry_stable",
+      "required_attributes": ["http.request.method", "http.route", "http.response.status_code"]
+    },
+    {
+      "name": "http.server.request.count",
+      "kind": "counter",
+      "unit": "{request}",
+      "stability": "bitsmithy",
+      "required_attributes": ["http.request.method", "http.route", "http.response.status_code"]
+    },
+    {
+      "name": "http.server.active_requests",
+      "kind": "up_down_counter",
+      "unit": "{request}",
+      "stability": "bitsmithy",
+      "required_attributes": ["http.request.method"]
+    },
+    {
+      "name": "db.client.operation.duration",
+      "kind": "histogram",
+      "unit": "s",
+      "stability": "opentelemetry_stable",
+      "required_attributes": ["db.system.name", "db.operation.name"],
+      "optional_attributes": ["error.type"]
+    },
+    {
+      "name": "db.client.operation.count",
+      "kind": "counter",
+      "unit": "{operation}",
+      "stability": "bitsmithy",
+      "required_attributes": ["db.system.name", "db.operation.name"],
+      "optional_attributes": ["error.type"]
+    },
+    {
+      "name": "app.user.action.count",
+      "kind": "counter",
+      "unit": "{action}",
+      "stability": "bitsmithy",
+      "required_attributes": ["app.user.action.name", "app.user.type", "app.user.action.outcome"],
+      "optional_attributes": ["app.user.action.changed", "error.type"]
+    },
+    {
+      "name": "app.user.action.affected_items",
+      "kind": "histogram",
+      "unit": "{item}",
+      "stability": "bitsmithy",
+      "required_attributes": ["app.user.action.name", "app.user.type", "app.user.action.outcome"],
+      "optional_attributes": ["app.user.action.changed", "error.type"]
+    }
+  ],
+  "span_events": {
+    "app.user.action": {
+      "required_attributes": ["app.user.action.name", "app.user.type", "app.user.action.outcome"],
+      "optional_attributes": ["app.user.action.changed", "error.type"]
+    }
+  },
+  "privacy": {
+    "forbidden_categories": [
+      "concrete_url",
+      "credential",
+      "database_bind",
+      "email",
+      "free_text",
+      "record_id",
+      "session_token",
+      "sql_statement",
+      "user_id"
+    ]
+  },
+  "compatibility": {
+    "patch": "Clarifications that do not change emitted telemetry.",
+    "minor": "Additive optional definitions and values.",
+    "major": "Renamed or removed definitions, changed units, or changed meaning."
+  }
+}

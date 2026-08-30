@@ -6,13 +6,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	otel "github.com/bitsmithy/go-otel"
 	gotel "go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	otel "github.com/bitsmithy/go-otel"
 )
 
 // newTestMiddleware creates a Middleware backed by in-memory exporters and
@@ -198,6 +199,10 @@ func TestMiddleware_RequestDurationMetric(t *testing.T) {
 	if m == nil {
 		t.Fatal("metric http.server.request.duration not found")
 		return
+	}
+
+	if m.Unit != "s" {
+		t.Fatalf("duration unit = %q, want s", m.Unit)
 	}
 
 	hist, ok := m.Data.(metricdata.Histogram[float64])
