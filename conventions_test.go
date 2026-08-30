@@ -11,7 +11,7 @@ import (
 )
 
 func TestPinnedTelemetryConventions(t *testing.T) {
-	content, err := os.ReadFile("testdata/telemetry-conventions-v1.0.0.json")
+	content, err := os.ReadFile("testdata/telemetry-conventions-v1.1.0.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestPinnedTelemetryConventions(t *testing.T) {
 	digest := sha256.Sum256(content)
 	checksum := hex.EncodeToString(digest[:])
 
-	if got, want := []string{otel.ConventionsVersion, manifest.ContractVersion, checksum}, []string{"1.0.0", otel.ConventionsVersion, otel.ConventionsSHA256}; !equalStrings(got, want) {
+	if got, want := []string{otel.ConventionsVersion, manifest.ContractVersion, checksum}, []string{"1.1.0", otel.ConventionsVersion, otel.ConventionsSHA256}; !equalStrings(got, want) {
 		t.Fatalf("pinned contract = %v, want %v", got, want)
 	}
 }

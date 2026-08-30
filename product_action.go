@@ -24,12 +24,18 @@ const (
 
 var productActionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
 
+var productActionVariants = map[string]struct{}{
+	"all": {}, "apple": {}, "email": {}, "empty": {}, "google": {},
+	"import": {}, "passkey": {}, "starter": {}, "write": {},
+}
+
 // ProductAction describes one deliberate user intent.
 type ProductAction struct {
 	Name          string
 	Actor         string
 	Outcome       string
 	Changed       *bool
+	Variant       string
 	AffectedItems int64
 	ErrorType     string
 }
@@ -88,6 +94,11 @@ func validateProductAction(action ProductAction) error {
 	if action.Outcome != OutcomeSuccess && action.Outcome != OutcomeRejected && action.Outcome != OutcomeError {
 		return fmt.Errorf("invalid Product Action outcome: %s", action.Outcome)
 	}
+	if action.Variant != "" {
+		if _, valid := productActionVariants[action.Variant]; !valid {
+			return fmt.Errorf("invalid Product Action variant: %s", action.Variant)
+		}
+	}
 	if action.AffectedItems < 0 {
 		return fmt.Errorf("product action affected items must not be negative")
 	}
@@ -102,6 +113,9 @@ func productActionAttributes(action ProductAction) []attribute.KeyValue {
 	}
 	if action.Changed != nil {
 		attrs = append(attrs, attribute.Bool("app.user.action.changed", *action.Changed))
+	}
+	if action.Variant != "" {
+		attrs = append(attrs, attribute.String("app.user.action.variant", action.Variant))
 	}
 	if action.ErrorType != "" {
 		attrs = append(attrs, attribute.String("error.type", action.ErrorType))

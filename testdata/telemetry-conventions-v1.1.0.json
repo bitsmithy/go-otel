@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "1.1.0",
   "semantic_conventions": {
     "authority": "OpenTelemetry",
     "policy": "Stable OpenTelemetry semantic conventions take precedence over this contract."
@@ -28,7 +28,12 @@
       "cardinality": "bounded",
       "allowed_values": ["success", "rejected", "error"]
     },
-    "app.user.action.changed": { "type": "boolean", "cardinality": "bounded" }
+    "app.user.action.changed": { "type": "boolean", "cardinality": "bounded" },
+    "app.user.action.variant": {
+      "type": "string",
+      "cardinality": "bounded",
+      "allowed_values": ["all", "apple", "email", "empty", "google", "import", "passkey", "starter", "write"]
+    }
   },
   "instruments": [
     {
@@ -74,7 +79,7 @@
       "unit": "{action}",
       "stability": "bitsmithy",
       "required_attributes": ["app.user.action.name", "app.user.type", "app.user.action.outcome"],
-      "optional_attributes": ["app.user.action.changed", "error.type"]
+      "optional_attributes": ["app.user.action.changed", "app.user.action.variant", "error.type"]
     },
     {
       "name": "app.user.action.affected_items",
@@ -82,13 +87,13 @@
       "unit": "{item}",
       "stability": "bitsmithy",
       "required_attributes": ["app.user.action.name", "app.user.type", "app.user.action.outcome"],
-      "optional_attributes": ["app.user.action.changed", "error.type"]
+      "optional_attributes": ["app.user.action.changed", "app.user.action.variant", "error.type"]
     }
   ],
   "span_events": {
     "app.user.action": {
       "required_attributes": ["app.user.action.name", "app.user.type", "app.user.action.outcome"],
-      "optional_attributes": ["app.user.action.changed", "error.type"]
+      "optional_attributes": ["app.user.action.changed", "app.user.action.variant", "error.type"]
     }
   },
   "privacy": {

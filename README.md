@@ -296,6 +296,7 @@ err = recorder.Record(ctx, telemetry.ProductAction{
 
 The recorder emits `app.user.action.count` and an `app.user.action` event on the active span.
 Set `AffectedItems` for a bulk gesture; the action counter still increments once while `app.user.action.affected_items` records its size.
+Set `Variant` only to a value from the shared contract's finite variant list.
 Actors are limited to `anonymous`, `cook`, and `guest`.
 Outcomes are limited to `success`, `rejected`, and `error`.
 
@@ -452,7 +453,7 @@ log := slog.New(telemetry.FanoutHandler{
 
 ## Shared conventions
 
-This library implements version `1.0.0` of the public [Bitsmithy Telemetry Conventions](https://github.com/bitsmithy/telemetry-conventions).
+This library implements version `1.1.0` of the public [Bitsmithy Telemetry Conventions](https://github.com/bitsmithy/telemetry-conventions).
 Stable OpenTelemetry semantic conventions take precedence, and the vendored contract checksum makes convention upgrades explicit in tests.
 HTTP request durations use seconds, and shared metric attributes use route patterns and bounded values.
 

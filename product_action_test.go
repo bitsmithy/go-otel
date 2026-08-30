@@ -19,7 +19,8 @@ func TestProductActionRecorderRecordsMetricAndSpanEvent(t *testing.T) {
 	ctx, span := harness.Tracer.Start(context.Background(), "request")
 	changed := true
 	if err := recorder.Record(ctx, otel.ProductAction{
-		Name: "recipe.import.request", Actor: otel.ActorCook, Outcome: otel.OutcomeSuccess, Changed: &changed,
+		Name: "recipe.import.request", Actor: otel.ActorCook, Outcome: otel.OutcomeSuccess,
+		Changed: &changed, Variant: "starter",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +36,7 @@ func TestProductActionRecorderRecordsMetricAndSpanEvent(t *testing.T) {
 		"app.user.type":           "cook",
 		"app.user.action.outcome": "success",
 		"app.user.action.changed": "true",
+		"app.user.action.variant": "starter",
 	}
 	if got := oteltest.MetricAttrs(sum.DataPoints[0].Attributes); !equalStringMaps(got, wantAttrs) {
 		t.Fatalf("Product Action attributes = %v, want %v", got, wantAttrs)
@@ -70,6 +72,7 @@ func TestProductActionRecorderRejectsUnknownBoundedValues(t *testing.T) {
 	for _, action := range []otel.ProductAction{
 		{Name: "recipe.create", Actor: "operator", Outcome: otel.OutcomeSuccess},
 		{Name: "recipe.create", Actor: otel.ActorCook, Outcome: "timeout"},
+		{Name: "recipe.create", Actor: otel.ActorCook, Outcome: otel.OutcomeSuccess, Variant: "private choice"},
 	} {
 		if err := recorder.Record(context.Background(), action); err == nil {
 			t.Fatalf("Record(%+v) succeeded, want validation error", action)
